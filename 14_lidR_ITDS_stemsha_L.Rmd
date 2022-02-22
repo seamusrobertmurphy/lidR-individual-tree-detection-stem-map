@@ -1,0 +1,75 @@
+---
+title: "Script Review: 'stems_grids_2020125'"
+author: "LQ-SRM"
+date: "22/02/2022"
+output: 
+  pdf_document:
+    toc: TRUE
+    toc_depth: 5
+    number_sections: TRUE
+    df_print: tibble
+    latex_engine: xelatex
+  zotero: TRUE
+
+bibliography: references.bib
+---
+
+```{r setup, echo=FALSE, message=FALSE,warning=FALSE, error=FALSE}
+library(lidR)
+library(mapview)
+library(rgl)
+library(pandocfilters)
+library(rmarkdown)
+library(formatR)
+library(gitignore)
+library(tinytex)
+library(knitr)
+library(raster)
+library(webdriver)
+library(webshot)
+library(webshot2)
+library(terra)
+library(matlab)
+#webshot::install_phantomjs(force = TRUE)
+knit_hooks$set(webgl = hook_webgl)
+knit_hooks$set(rgl.static = hook_rgl)
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, error=FALSE, message = FALSE)
+set.seed(23)
+```
+
+# Assign Disk Memory Paths 
+
+File paths were replaced assigning AOI to the Ahbau collection and tile chunk 'las_tile_ahbau' taken from the visuaization sample in the previous pipeline: ["13_lidR_PointCloud_Procesing"](https://github.com/seamusrobertmurphy/13_lidR_PointCloud_Processing.git). 
+
+```{r, eval=FALSE}
+AOI<-"Meldrum"
+AOIpath<-paste0("H:\\",AOI,"\\")
+GRIDS<-paste0(AOIpath,"GRIDS\\")
+TREES<-paste0(AOIpath,"TREES\\")
+defaultCRS<-CRS("+init=EPSG:3153")
+```
+
+I am still having issues downloading the LiDAR data from sync due to poor internet. Note to self to chat about this during next progress meeting. 
+
+```{r, eval=FALSE}
+LAS = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/", select = "xyzcr",)
+las = readLAS("./Data/Ahbau/Las_v12_ASPRS/093g030122ne.las", select = 'xyzcr')
+las_check(LAS)
+is.indexed(LAS)
+#lidR:::catalog_laxindex(LAS)
+opt_output_files(LAS)<-paste0('./Data/rtLAS\\","{ID}")
+opt_chunk_size(LAS)<-1000
+opt_chunk_buffer(LAS)<-0
+catalog_retile(LAS)
+AOI = las_tile_ahbau
+bbox = as(raster::extent(las_tile_ahbau), "SpatialPolygons") %>%
+crs(bbox) = defaultCRS
+
+opt_output_files(las_ctg_ahbau_indexed) =  paste0(tempdir(), "./Data/las_ctg_ahbau_csf")
+
+AOIpath<-paste0("H:\\",AOI,"\\")
+GRIDS<-paste0(AOIpath,"GRIDS\\")
+TREES<-paste0(AOIpath,"TREES\\")
+defaultCRS<-CRS("+init=EPSG:3153")
+```
+
