@@ -1,5 +1,5 @@
 ---
-title: "Script Review: 'stems_grids_2020125'"
+title: "Script Draft: 'stems_grids_2020125'"
 author: "LQ-SRM"
 date: "22/02/2022"
 output: 
@@ -37,9 +37,13 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE, error=FALSE, message = FALSE)
 set.seed(23)
 ```
 
-# Assign Disk Memory Paths 
+## Action 
 
-File paths were replaced assigning AOI to the Ahbau collection and tile chunk 'las_tile_ahbau' taken from the visuaization sample in the previous pipeline: ["13_lidR_PointCloud_Procesing"](https://github.com/seamusrobertmurphy/13_lidR_PointCloud_Processing.git). 
+
+
+# Assign Disk Memory Paths
+
+File paths were replaced assigning AOI to the Ahbau collection and tile chunk 'las_tile_ahbau' taken from the visuaization sample in the previous pipeline: ["13_lidR_PointCloud_Procesing"](https://github.com/seamusrobertmurphy/13_lidR_PointCloud_Processing.git).
 
 ```{r, eval=FALSE}
 AOI<-"Meldrum"
@@ -49,7 +53,7 @@ TREES<-paste0(AOIpath,"TREES\\")
 defaultCRS<-CRS("+init=EPSG:3153")
 ```
 
-I am still having issues downloading the LiDAR data from sync due to poor internet. Note to self to chat about this during next progress meeting. 
+I am still having issues downloading the LiDAR data from sync due to poor internet. Note to self to chat about this during next progress meeting.
 
 ```{r, eval=FALSE}
 LAS = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/", select = "xyzcr",)
@@ -72,4 +76,3 @@ GRIDS<-paste0(AOIpath,"GRIDS\\")
 TREES<-paste0(AOIpath,"TREES\\")
 defaultCRS<-CRS("+init=EPSG:3153")
 ```
-
