@@ -28,8 +28,11 @@ library(raster)
 library(webdriver)
 library(webshot)
 library(webshot2)
+library(sf)
+library(sp)
 library(terra)
-library(matlab)
+library(conflicted)
+library(RColorBrewer)
 #webshot::install_phantomjs(force = TRUE)
 knit_hooks$set(webgl = hook_webgl)
 knit_hooks$set(rgl.static = hook_rgl)
@@ -37,15 +40,15 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE, error=FALSE, message = FALSE)
 set.seed(23)
 ```
 
-## Action 
+## Action {.unnumbered}
 
+This following includes R Markdown documentation of steps to derive stems/ha predictor from LiDAR point cloud for the TCC-EFI predictive ecosystem model. This pipeline was adopted from the original script shared by LQuan and reformatted to use inputs from the normalized, cleaned and classified point cloud produced in previous deliverable ['13_lidR_PointCloud_Processing'](https://github.com/seamusrobertmurphy/13_lidR_PointCloud_Processing.git).All package lists, markdown outputs, and virtual environment settings were stored in the github repository titled ['14_lidR_ITDS_stemha_L'](https://github.com/seamusrobertmurphy/14_lidR_ITDS_stemsha_L.git).
 
+# Import normalized LAS data
 
-# Assign Disk Memory Paths
+Since, the output from previous deliverable '13_lidR_Processing' that is needed here is in point-form, there are challenges with how to share the full collection remotely due to file size and internet connection here. Instead, I've saved all system files from that pipeline environment in a .RData file in the U:drive folder 'EFI Project - SRM 2021-2022' titled 'lidar-processing-pipeline.RData'. File paths to 'AOI' in the original script were replaced with the normalized LAScatolog 'las_ctg_ahbau_csf_sor_norm' and normalized tile 'las_tile_ahbau_csf_sor_norm. In effort to get a sample ready for you meeting tomorrow, I've tested this pipeline with the normalized tile chunk only and rendered in 2D using base plot functions. This tile chunk can also be processed, classified, and normalized quickly enough on your end with functions below which were copied and pasted from the previous output. Make sure to unnormalize if using the .RData files. 
 
-File paths were replaced assigning AOI to the Ahbau collection and tile chunk 'las_tile_ahbau' taken from the visuaization sample in the previous pipeline: ["13_lidR_PointCloud_Procesing"](https://github.com/seamusrobertmurphy/13_lidR_PointCloud_Processing.git).
-
-```{r, eval=FALSE}
+```{r}
 AOI<-"Meldrum"
 AOIpath<-paste0("H:\\",AOI,"\\")
 GRIDS<-paste0(AOIpath,"GRIDS\\")
@@ -53,26 +56,64 @@ TREES<-paste0(AOIpath,"TREES\\")
 defaultCRS<-CRS("+init=EPSG:3153")
 ```
 
-I am still having issues downloading the LiDAR data from sync due to poor internet. Note to self to chat about this during next progress meeting.
+...replaced with:
 
-```{r, eval=FALSE}
-LAS = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/", select = "xyzcr",)
-las = readLAS("./Data/Ahbau/Las_v12_ASPRS/093g030122ne.las", select = 'xyzcr')
-las_check(LAS)
-is.indexed(LAS)
-#lidR:::catalog_laxindex(LAS)
-opt_output_files(LAS)<-paste0('./Data/rtLAS\\","{ID}")
-opt_chunk_size(LAS)<-1000
-opt_chunk_buffer(LAS)<-0
-catalog_retile(LAS)
-AOI = las_tile_ahbau
-bbox = as(raster::extent(las_tile_ahbau), "SpatialPolygons") %>%
-crs(bbox) = defaultCRS
-
-opt_output_files(las_ctg_ahbau_indexed) =  paste0(tempdir(), "./Data/las_ctg_ahbau_csf")
-
-AOIpath<-paste0("H:\\",AOI,"\\")
-GRIDS<-paste0(AOIpath,"GRIDS\\")
-TREES<-paste0(AOIpath,"TREES\\")
-defaultCRS<-CRS("+init=EPSG:3153")
+```{r, rgl.static=TRUE, cache=TRUE}
+las_tile_ahbau = readLAS("./Data/Ahbau/Las_v12_ASPRS/093g030122ne.las", select = 'xyzr')
+las_tile_ahbau = filter_duplicates(las_tile_ahbau)
+las_tile_ahbau_csf = classify_ground(las_tile_ahbau, csf(sloop_smooth=TRUE, 0.5, 1))
+las_tile_ahbau_csf_so = classify_noise(las_tile_ahbau_csf, sor(k=10, m=3))
+las_tile_ahbau_csf_sor = filter_poi(las_tile_ahbau_csf_so, Classification != LASNOISE)
+las_tile_ahbau_csf_sor_norm = normalize_height(las_tile_ahbau_csf_sor, knnidw())
+# plot normalization using derived chm
+las_tile_ahbau_chm = grid_canopy(las_tile_ahbau_csf_sor_norm, 1, dsmtin(8))
+plot(las_tile_ahbau_chm, col = height.colors(50))
 ```
+
+# Individual Tree Detection
+
+To avoid replicated trees across adjacent tiles, the catalog engine 'uniqueness' function was applied to the local maxima algorithm. This was fitted with your custom window function 'wf', which is also plotted below with your adopted code chunks. Super interesting stuff. For visualization, the detected tree top points were plotted as 'sp>sf' object over chm raster.
+
+```{r, fig.show='hold', out.width="50%"}
+# window function (Quan, 2022)
+wf<-function(x){ #so far these parameters are best will try 6m floor. 
+  a=0.179-0.1
+  b=0.51+0.5 #Go big but not 2.49 big. maybe increase slope a hair.
+  y<-a*x+b #y[x<15]=2.2
+  return(y)}
+heights <- seq(0,40,0.5)
+window <- wf(heights)
+plot(heights, window, type = "l",  ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)")
+
+# find trees
+las_tile_ahbau_ttops <- find_trees(las_tile_ahbau_csf_sor_norm, lmf(wf), uniqueness = "bitmerge")
+proj4string(las_tile_ahbau_ttops) <- defaultCRS
+las_tile_ahbau_ttops_sf = st_as_sf(las_tile_ahbau_ttops)
+mypalette<-brewer.pal(8,"Greens")
+plot(las_tile_ahbau_chm, col = mypalette, alpha=0.3)
+plot(st_geometry(las_tile_ahbau_ttops_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
+```
+
+
+# Individual Tree Segmentation (treeID-proofed)
+
+Not 100% sure, but from partial reading of the lidR bookdown, it looks like Romaine is suggesting that because of tile bufferring needed in the engine processing, there is need to segment the crowns to make sure trees are not double counted by multiple tiles. He notes this is because the engine was designed for batch processing or even multi-cpu processing. See here his mention at top of [section 14.12](https://r-lidar.github.io/lidRbook/engine.html#engine-its). Note that Im using deprecated function names here from lidR pkg version 3.2.3. Im not sure if new pkg version is out yet since the bookdown has been updated. Also, Im apprehensive to mess with my environment before finishing these outputs. 
+
+```{r, eval=TRUE, fig.show='hold', out.width="50%"}
+algo = dalponte2016(las_tile_ahbau_chm, las_tile_ahbau_ttops)
+las_tile_ahbau_segmented = segment_trees(las_tile_ahbau_csf_sor_norm, algo)
+las_tile_ahbau_segmented_crowns = delineate_crowns(las_tile_ahbau_segmented, type = 'convex')
+sp::plot(las_tile_ahbau_segmented_crowns, cex=0.001, axes = TRUE, alpha=0.5)
+```
+
+# Derive 'stemsha_L' Predictor From Segmented Tree Count
+
+```{r}
+#sp::spTransform(las_tile_ahbau_segmented_crowns) = defaultCRS
+las_tile_ahbau_segmented_crowns_sf = st_as_sf(las_tile_ahbau_segmented_crowns)
+las_tile_ahbau_segmented_crowns_sf
+psych::describe(las_tile_ahbau_segmented_crowns_sf$treeID)
+```
+
+
+
