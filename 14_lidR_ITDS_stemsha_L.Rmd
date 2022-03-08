@@ -118,16 +118,12 @@ sp::plot(las_tile_ahbau_segmented_crowns, cex=0.0001, axes = TRUE, alpha=0.3)
 
 ```{r}
 #sp::spTransform(las_tile_ahbau_segmented_crowns) = defaultCRS
-las_tile_ahbau_segmented_crowns_sf = st_as_sf(las_tile_ahbau_segmented_crowns, 
-  coords = c("XTOP", "YTOP"), st_crs=defaultCRS)
+las_tile_ahbau_segmented_crowns_sf = st_as_sf(las_tile_ahbau_segmented_crowns, coords = c("XTOP", "YTOP"), st_crs=defaultCRS)
 psych::describe(las_tile_ahbau_segmented_crowns_sf$treeID)
-
-las_tile_ahbau_segmented_crowns_df = as.data.frame(las_tile_ahbau_segmented_crowns_sf, xy=TRUE)
-
-las_tile_ahbau_ttops_sf
 
 raster_template = rast(ext(las_tile_ahbau_chm), resolution = 20, crs = st_crs(las_tile_ahbau_chm)$wkt)
 las_tile_ahbau_ttops_raster = rasterize(vect(las_tile_ahbau_ttops_sf), raster_template, fun = sum, touches = TRUE)
 stemsha_L = las_tile_ahbau_ttops_raster*5
 plot(stemsha_L)
+raster::raster(stemsha_L)
 ```
