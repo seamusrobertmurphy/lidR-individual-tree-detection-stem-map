@@ -111,7 +111,7 @@ FYI, Ive been using an older lidR package version (3.2.3) and some deprecated fu
 algo = dalponte2016(las_tile_ahbau_chm, las_tile_ahbau_ttops)
 las_tile_ahbau_segmented = segment_trees(las_tile_ahbau_csf_sor_norm, algo)
 las_tile_ahbau_segmented_crowns = delineate_crowns(las_tile_ahbau_segmented, type = 'convex')
-sp::plot(las_tile_ahbau_segmented_crowns, cex=0.001, axes = TRUE, alpha=0.5)
+sp::plot(las_tile_ahbau_segmented_crowns, cex=0.0001, axes = TRUE, alpha=0.3)
 ```
 
 # Derive 'stemsha_L' Predictor From Segmented Tree Count
@@ -121,4 +121,11 @@ sp::plot(las_tile_ahbau_segmented_crowns, cex=0.001, axes = TRUE, alpha=0.5)
 las_tile_ahbau_segmented_crowns_sf = st_as_sf(las_tile_ahbau_segmented_crowns)
 las_tile_ahbau_segmented_crowns_sf
 psych::describe(las_tile_ahbau_segmented_crowns_sf$treeID)
+
+las_tile_ahbau_ttops_sf = st_as_sf(las_tile_ahbau_ttops, coords = c("x","y")) %>%
+  st_set_crs(defaultCRS)
+las_tile_ahbau_ttops_matrix <- unlist(st_geometry(las_tile_ahbau_ttops_sf)) %>% 
+  matrix(ncol=2,byrow=TRUE) 
+las_tile_ahbau_ttops_stemsha_L <- pointdensity(las_tile_ahbau_ttops_matrix, eps = 0.00000001784, type = "density")
+
 ```
