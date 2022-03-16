@@ -105,7 +105,7 @@ plot(st_geometry(las_tile_ahbau_ttops_sf["treeID"]), add=TRUE, cex = 0.001, pch=
 
 # Individual Tree Segmentation (treeID-proofed)
 
-Not 100% sure, but from partial reading of the lidR bookdown, it looks like Romaine is suggesting that because of tile bufferring needed in the engine processing, there is need to segment the crowns to make sure trees are not double counted by multiple tiles. He notes this is because the engine was designed for batch processing. (Romaine, 2022: [14.12](https://r-lidar.github.io/lidRbook/engine.html#engine-its)).
+Not 100% sure, but from partial reading of the lidR bookdown, it looks like Romaine is suggesting that because of tile buffering needed in the engine processing, there is need to segment the crowns to make sure trees are not double counted by multiple tiles. He notes this is because the engine was designed for batch processing. (Romaine, 2022: [14.12](https://r-lidar.github.io/lidRbook/engine.html#engine-its)).
 
 FYI, Ive been using an older lidR package version (3.2.3) and some deprecated function names here which need replacing for the new LidR 4.0.0.
 
@@ -118,7 +118,7 @@ las_tile_ahbau_segmented_crowns_spplot = sp::plot(las_tile_ahbau_segmented_crown
 
 ![](Data/treeTops_crowns_spPolygons.png)
 
-# Derive 'stemsha_L' Predictor From Segmented Tree Count
+# Derive 'stemsha_L' Predictor From Segmented Tree Count: ITDS Route
 
 ```{r, eval=FALSE}
 #sp::spTransform(las_tile_ahbau_segmented_crowns) = defaultCRS
@@ -136,3 +136,129 @@ plot(stemsha_L)
 ```
 
 ![](Data/stemsha_L_raster.png)
+
+# Derive 'stemsha_L' Predictor from CHMs: Raster Resolutions Route
+
+```{r, eval=FALSE}
+
+# Point-to-raster 2 resolutions
+ttops_chm_p2r_05 <- locate_trees(chm_p2r_05, lmf(5))
+
+las_tile_ahbau_chm = grid_canopy(las_tile_ahbau_csf_sor_norm, 1, dsmtin(8))
+plot(lead_htop_raster, col = height.colors(50))
+
+chm_p2r_05 <- rasterize_canopy(las, 0.5, p2r(subcircle = 0.2), pkg = "terra")
+chm_p2r_1 <- rasterize_canopy(las, 1, p2r(subcircle = 0.2), pkg = "terra")
+
+# Pitfree with and without subcircle tweak
+chm_pitfree_05_1 <- rasterize_canopy(las, 0.5, pitfree(), pkg = "terra")
+chm_pitfree_05_2 <- rasterize_canopy(las, 0.5, pitfree(subcircle = 0.2), pkg = "terra")
+
+# Post-processing median filter
+kernel <- matrix(1,3,3)
+chm_p2r_05_smoothed <- terra::focal(chm_p2r_05, w = kernel, fun = median, na.rm = TRUE)
+chm_p2r_1_smoothed <- terra::focal(chm_p2r_1, w = kernel, fun = median, na.rm = TRUE)
+```
+
+```{r, eval=FALSE}
+###########################
+# chm to stem map pipeline
+lead_htop = rast("./Data/Raster_Covariates/lead_htop_raster.tif")
+elev = rast("./Data/Raster_Covariates/elev_raster.tif")
+elev = mask(elev, vect(aoi_sf))
+lead_htop = mask(lead_htop, vect(aoi_sf))
+lead_htop[lead_htop < 1.3] <- NA
+elev = mask(elev, lead_htop, inverse=FALSE)
+plot(lead_htop, main = "canopy height (m)")
+plot(elev, main = "elevation")
+```
+
+Using terra aggregate function with listed loops we derived a stem map drawn from a cell grid of 1m resolution that was post-processed with logistic median smoothing filter. Aggregation sampling used in this terra function applies a simple pattern of arithmetic from top left to right and so depends on the divisional fraction of total cell numbers whether exact multiplication is returned or numbers are rounded down with ommissions, as was seen in the Gaspard analysis below (ncells: 1080>330). For comparison, a second aggreation was tested with centroid based sampling using a polygon overlaid on top of the cells along represented by block dots. From this neighbourhoods, centroid values were extracted to a polygon and assessed using histograms before 95th percentile reassigned as canopy height layer and stem detection input.
+
+## Variable Window Size Functions
+
+```{r}
+# window function (Quan, 2022)
+wf_Quan<-function(x){ 
+  a=0.179-0.1
+  b=0.51+0.5 
+  y<-a*x+b 
+  return(y)}
+# window function (Plowright, 2017)  
+# Plowright, A. (2015). Extracting trees in an urban environment using airborne LiDAR. 
+# Doctoral dissertation, University of British Columbia.
+wf_Plowright<-function(x){ # floor reccomended at 2 and then 1.5m
+  a=0.05
+  b=0.6 #Go big but not 2.49 big. maybe increase slope a hair.
+  y<-a*x+b #y[x<15]=2.2
+  return(y)}
+# window function (Pitkänen, et al., 2004) - Spruce + Scots Pine (lsmedian) : 1.26 0.16
+heights <- seq(0,40,0.5)
+window_Quan <- wf_Quan(heights)
+window_Plowright <- wf_Plowright(heights)
+plot(heights, window_Quan, type = "l",  
+     ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='project allometry')
+plot(heights, window_Plowright, type = "l",  
+     ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='plowright')
+
+```
+
+## Custom Function for 95th% Tree Metrics Extraction
+
+```{r}
+# custom function writing
+quant95 <- function(x, ...) quantile(x, c(.95), na.rm = TRUE)
+custFuns <- list(quant95, max)
+names(custFuns) <- c("95thQuantile", "Max")
+```
+
+### Stem Mapping
+
+```{r, eval=FALSE}
+#raster post-process smoothing
+kernel <- matrix(1,3,3)
+terra::focal(lead_htop_rast, w = kernel, fun = median, na.rm = TRUE)
+lead_htop_raster = raster(lead_htop)
+#foretTools pipeline
+ttops_6m_Quan = vwf(CHM = lead_htop_raster, winFun = wf_Quan, minHeight = 6)
+ttops_6m_Plowright = vwf(CHM = lead_htop_raster, winFun = wf_Plowright, minHeight = 6)
+ttops_6m_wf5 = vwf(CHM = lead_htop_raster, winFun = 5, minHeight = 6)
+ttops_2m_Quan = vwf(CHM = lead_htop_raster, winFun = wf_Quan, minHeight = 2)
+ttops_2m_Plowright = vwf(CHM = lead_htop_raster, winFun = wf_Plowright, minHeight = 2)
+# window size mining
+height_crown_cor = lm(ttops_6m_Quan$height ~ ttops_6m_Quan$winRadius)
+height_crown_cor 
+
+# custom functions insert here
+sp_summarise(ttops_6m_Quan, areas = vri_aoi_sf, variables = "height", statFuns = custFuns)
+sp_summarise(ttops_6m_Quan, areas = vri_aoi_sf, statFuns = custFuns) #treecount
+
+# rasterized results at 50m resolution
+gridStats <- sp_summarise(ttops_6m_Quan = ttops, grid = 50, variables = "height")
+
+#lidr pipeline
+ttops_6m_Quan = lidR::find_trees(lead_htop_raster[lead_htop_raster>6], lmf(wf_Quan))
+ttops_6m_Plowright = lidR::find_trees(lead_htop_raster[lead_htop_raster>6], lmf(wf_Plowright))
+stemsha_L_sf = st_as_sf(ttops_6m_Quan)
+stemsha_L_raster = raster::raster(stemsha_L_sf)
+# visualize
+mypalette<-brewer.pal(8,"Greens")
+plot(lead_htop_raster, col = mypalette, alpha=0.6)
+plot(st_geometry(stemsha_L["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
+writeRaster(stemsha_L_raster, filename = "./Data/Raster_Covariates/stemsha_L_raster.tif", overwrite=TRUE)
+plot(stemsha_L_raster)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
